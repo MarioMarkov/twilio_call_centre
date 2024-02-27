@@ -1,0 +1,5 @@
+langchain=0.1.9
+fastapi=0.109.2
+uvivorn=0.24.0.post1
+python-dotenv
+twilio
