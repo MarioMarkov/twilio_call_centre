@@ -59,7 +59,7 @@ def get_audio_string_from_text(text):
             
             
     def syntesized_cb(evt):
-        #print('Syntesizied:', evt.result.text)
+        print('SPEAKING READY:', evt.result.text)
         full_audio.append(evt.result.text)
 
     def canceled_cb(evt):

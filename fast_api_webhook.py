@@ -61,14 +61,15 @@ async def echo(websocket: WebSocket):
                 print('\nStreaming has started')
                 # Here you can put .wav file with welcome phrase
                 # samples_per_second=8000, bits_per_sample=16, channels=1
-                # await play_text_raw_audio(websocket=websocket,
-                #                           stream_sid=  packet["streamSid"],
-                #                           text= "Здравейте, аз съм бот на А едно.")
+                await play_text_raw_audio(websocket=websocket,
+                                          stream_sid=  packet["streamSid"],
+                                          text= "Здравейте, аз съм бот на А едно.")
 
             elif packet['event'] == 'stop':
                 print('\nStreaming has stopped')
-                break
                 await websocket.close()
+                break
+                
 
             elif packet['event'] == 'closed':
                 await websocket.close()
