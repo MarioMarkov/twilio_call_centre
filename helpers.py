@@ -215,7 +215,7 @@ def send_raw_audio_new(file_path, ws, stream_sid):
             )
 
 
-async def play_text_raw_audio(websocket: WebSocket, stream_sid: str, text: str):
+async def play_text_raw_audio(websocket: WebSocket, stream_sid: str, text: str, streaming: bool = False):
     audio_string = get_audio_string_from_text(text)
     for i in range(0, len(audio_string), 216):
         # Get the chunk
@@ -223,8 +223,29 @@ async def play_text_raw_audio(websocket: WebSocket, stream_sid: str, text: str):
         await websocket.send_json(
             {"event": "media", "streamSid": stream_sid, "media": {"payload": chunk}}
         )
-        # LAST CHUNK
-        if i + len(chunk) >= len(audio_string):
-            await websocket.send_json(
-                {"event": "mark", "streamSid": stream_sid, "mark": {"name": "my label"}}
-            )
+        if not streaming:
+            # LAST CHUNK
+            if i + len(chunk) >= len(audio_string):
+                await websocket.send_json(
+                    {"event": "mark", "streamSid": stream_sid, "mark": {"name": "my label"}}
+                )
+
+
+
+from  langchain_core.messages.ai import AIMessageChunk
+async def get_tokens(input:str, agent, message_history):
+    path_status = {}
+    async for chunk in agent.astream_log(
+        {"input": input, "chat_history": message_history.messages},
+        config={"configurable": {"session_id": "asd"}},
+        include_names=["ChatOpenAI"],
+    ):
+        for op in chunk.ops:
+            if op["op"] == "add":
+                if op["path"] not in path_status:
+                    path_status[op["path"]] = op["value"]
+                else:
+                    if not isinstance( op["value"], dict):
+                        path_status[op["path"]] += op["value"]
+        if isinstance(path_status.get(op["path"]), AIMessageChunk):
+            yield path_status.get(op["path"]).content

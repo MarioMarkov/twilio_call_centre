@@ -1,19 +1,34 @@
 import json
 import sys
 from fastapi import FastAPI, Request, Response, WebSocket, WebSocketDisconnect
+from langserve import RemoteRunnable
 from twilio.twiml.voice_response import VoiceResponse, Connect
 from twilio.rest import Client
+import re
 
 # from urllib.parse import urlparse
 from streaming_audio_recognizer import get_audio_string_from_text
 from dotenv import load_dotenv
-from agent import agent_with_chat_history
-from helpers import AzureSpeechRecognizer, AzureSpeechSynthesizer, play_text_raw_audio
+
+# from agent import agent_with_chat_history, message_history
+from helpers import (
+    AzureSpeechRecognizer,
+    AzureSpeechSynthesizer,
+    get_tokens,
+    play_text_raw_audio,
+)
+from langchain_community.chat_message_histories import ChatMessageHistory
 
 load_dotenv()
 
 app = FastAPI()
 twilio_client = Client()
+
+remote_agent = RemoteRunnable(
+    "https://bot.happytree-937aa4bb.westus2.azurecontainerapps.io"
+)
+message_history = ChatMessageHistory()
+message_history.clear()
 
 
 @app.get("/call")
@@ -69,7 +84,7 @@ async def echo(websocket: WebSocket):
                 await play_text_raw_audio(
                     websocket=websocket,
                     stream_sid=packet["streamSid"],
-                    text="Здравейте, аз съм бот на А едно.",
+                    text="Здравейте, аз съм бот на абаут ю.",
                 )
 
             elif packet["event"] == "stop":
@@ -103,19 +118,46 @@ async def echo(websocket: WebSocket):
                         prev_recognitions_len = len(speech_recognizer.recognitions)
 
                         # get answer from the bot based on what the user has said
-                        answer = agent_with_chat_history.invoke(
-                            {"input": curr_recognition},
-                            {"configurable": {"session_id": "asd"}},
-                        )["output"]
+                        # answer = agent_with_chat_history.invoke(
+                        #     {"input": curr_recognition},
+                        #     {"configurable": {"session_id": "asd"}},
+                        # )["output"]
 
-                        print(f"Chatbot answer {answer}")
+                        # print(f"Chatbot answer {answer}")
 
+                        pattern = re.compile(r"[.!?]")
+                        found = 0
                         # disable recognized until speaking is finished
                         can_recognize = False
-                        await play_text_raw_audio(
-                            websocket=websocket,
-                            stream_sid=packet["streamSid"],
-                            text=answer,
+                        async for token in get_tokens(
+                            input=curr_recognition,
+                            agent=remote_agent,
+                            message_history=message_history,
+                        ):
+                            sentence_ends = [
+                                match.start() for match in re.finditer(pattern, token)
+                            ]
+                            if len(sentence_ends) > found:
+                                text = (
+                                    token[: sentence_ends[0] + 1]
+                                    if found == 0
+                                    else token[sentence_ends[-2] + 1 :]
+                                )
+                                print("Speaking :", text)
+                                await play_text_raw_audio(
+                                    websocket=websocket,
+                                    stream_sid=packet["streamSid"],
+                                    text=text,
+                                    streaming=True,
+                                )
+                                found += 1
+
+                        await websocket.send_json(
+                            {
+                                "event": "mark",
+                                "streamSid": packet["streamSid"],
+                                "mark": {"name": "my label"},
+                            }
                         )
 
                 # Hang up if 3 consecutive recognitions are empty
