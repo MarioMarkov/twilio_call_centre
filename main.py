@@ -7,10 +7,10 @@ from twilio.rest import Client
 import re
 
 # from urllib.parse import urlparse
-from streaming_audio_recognizer import get_audio_string_from_text
 from dotenv import load_dotenv
 
 # from agent import agent_with_chat_history, message_history
+from agent import create_agent
 from helpers import (
     AzureSpeechRecognizer,
     AzureSpeechSynthesizer,
@@ -23,10 +23,12 @@ load_dotenv()
 
 app = FastAPI()
 twilio_client = Client()
+agent = create_agent(retrieval_file_name="about_you")
 
-remote_agent = RemoteRunnable(
-    "https://bot.happytree-937aa4bb.westus2.azurecontainerapps.io"
-)
+
+# remote_agent = RemoteRunnable(
+#     "https://bot.happytree-937aa4bb.westus2.azurecontainerapps.io"
+# )
 message_history = ChatMessageHistory()
 message_history.clear()
 
@@ -34,8 +36,11 @@ message_history.clear()
 @app.get("/call")
 def call(request: Request):
     """Accept a phone call."""
+
+    # intiazlize voice response
     response = VoiceResponse()
 
+    # start stream
     start = Connect()
     response.append(start)
     print(request.url.hostname)
@@ -44,15 +49,17 @@ def call(request: Request):
     return Response(content=str(response), media_type="application/xml")
 
 
-@app.post("/call")
+@app.get("/call")
 def call(request: Request):
     """Accept a phone call."""
+
+    # intiazlize voice response
     response = VoiceResponse()
 
+    # start stream
     start = Connect()
     response.append(start)
     print(request.url.hostname)
-
     start.stream(url=f"wss://{request.url.hostname}/stream")
 
     return Response(content=str(response), media_type="application/xml")
@@ -61,26 +68,33 @@ def call(request: Request):
 @app.websocket("/stream")
 async def echo(websocket: WebSocket):
     """Receive and recognize audio stream."""
+
+    # samples_per_second=8000, bits_per_sample=16, channels=1
     speech_recognizer = AzureSpeechRecognizer(language="bg-BG")
     # speech_synthesizer = AzureSpeechSynthesizer(language="bg-BG", speech_synthesis_voice_name = 'bg-BG-BorislavNeural')
+
     prev_recognitions_len = 0
+
+    # this stops recognizing when the bot is talking
     can_recognize = True
+
+    # start accepting messages
     await websocket.accept()
-    print("Streaming...")
+
+    # catch the WebSocketDisconnect exception
     try:
         while True:
-            message = await websocket.receive_text()
-            packet = json.loads(message)
-
+            data = await websocket.receive_text()
+            packet = json.loads(data)
             # this means the bot has stopped speaking
             if packet["event"] == "mark":
                 print("Received mark. Speaking has stopped")
+                # start recognizing
                 can_recognize = True
 
             if packet["event"] == "start":
                 print("\nStreaming has started")
                 # welcome phrase
-                # samples_per_second=8000, bits_per_sample=16, channels=1
                 await play_text_raw_audio(
                     websocket=websocket,
                     stream_sid=packet["streamSid"],
@@ -104,7 +118,7 @@ async def echo(websocket: WebSocket):
                 # get media data
                 data = packet["media"]["payload"]
 
-                # if the bot is not speaking recognize audio
+                # if the bot is not speaking -> recognize audio
                 if can_recognize:
                     speech_recognizer.process_twilio_audio(f'{{"data": "{data}"}}')
                     curr_recognition = str(speech_recognizer.recognitions[-1])
@@ -131,7 +145,7 @@ async def echo(websocket: WebSocket):
                         can_recognize = False
                         async for token in get_tokens(
                             input=curr_recognition,
-                            agent=remote_agent,
+                            agent=agent,
                             message_history=message_history,
                         ):
                             sentence_ends = [
@@ -161,13 +175,13 @@ async def echo(websocket: WebSocket):
                         )
 
                 # Hang up if 3 consecutive recognitions are empty
-                if speech_recognizer.recognitions[-3:] == [""] * 3:
+                if speech_recognizer.recognitions[-4:] == [""] * 4:
                     print("Disconnecting...")
                     await websocket.close()
                     break
 
     except WebSocketDisconnect:
-        print("WebSocketDisconnect")
+        print("WebSocketDisconnect caught")
         await websocket.close()
 
 
@@ -182,4 +196,4 @@ if __name__ == "__main__":
     number.update(voice_url=public_url + "/call")
     print(f"Waiting for calls on {number.phone_number} public url: {public_url}")
 
-    uvicorn.run("fast_api_webhook:app", host="localhost", port=port)
+    uvicorn.run("main:app", host="localhost", port=port)

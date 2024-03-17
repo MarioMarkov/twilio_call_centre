@@ -6,22 +6,22 @@ import base64
 import audioop
 from fastapi import WebSocket
 import soundfile
-from dotenv import load_dotenv
 import wave
+from dotenv import load_dotenv
 
 # import wavefile
-from streaming_audio_recognizer import get_audio_string_from_text
 
 load_dotenv()
-
-
 import azure.cognitiveservices.speech as speechsdk
 from azure.cognitiveservices.speech import SpeechSynthesizer, AudioConfig
 
+key = os.getenv("SPEECH_KEY")
+service_region = os.getenv("SPEECH_REGION")
+speech_synthesis_voice_name = "bg-BG-BorislavNeural"
+language = "bg-BG"
+
 
 class AzureSpeechRecognizer:
-    key = os.getenv("SPEECH_KEY")
-    service_region = os.getenv("SPEECH_REGION")
 
     def __init__(self, language: str):
 
@@ -49,9 +49,9 @@ class AzureSpeechRecognizer:
         #                            int(babble_timeout_ms), int(end_silence_timeout_ambiguous_ms))
 
         self.speech_config = speechsdk.SpeechConfig(
-            subscription=self.key,
+            subscription=key,
             speech_recognition_language=language,
-            region=self.service_region,
+            region=service_region,
         )
         # self.speech_config.set_properties_by_name({"SpeechServiceConnection_InitialSilenceTimeoutMs","10000"} )
         self.speech_recognizer = speechsdk.SpeechRecognizer(
@@ -97,6 +97,7 @@ class AzureSpeechRecognizer:
         self.push_audio(audio_data)
 
 
+# old class does not work
 class AzureSpeechSynthesizer:
     key = os.getenv("SPEECH_KEY")
     service_region = os.getenv("SPEECH_REGION")
@@ -130,93 +131,97 @@ class AzureSpeechSynthesizer:
         synthesizer.speak_text_async(text).get()
 
 
-def send_audio_custom(file_path, ws, stream_sid):
+async def text_to_base64_audio(text):
+    """Convert text to base64 audio using azure speech synthesis"""
 
-    data, samplerate = soundfile.read(file_path)
-    soundfile.write(file_path, data, samplerate)
-    # Open the raw audio file
-    with open(file_path, "rb") as f:
-        f.seek(44, os.SEEK_SET)
-        # Read the raw data
-        raw_data = f.read()
+    # stores the byte64 encoded string
+    full_audio = []
 
-    mulaw_data = audioop.lin2ulaw(raw_data, 2)
-    base64_audio = base64.b64encode(mulaw_data).decode("utf-8")
+    class CustomAudioOutputStreamCallback(
+        speechsdk.audio.PushAudioOutputStreamCallback
+    ):
+        def __init__(self):
+            super().__init__()
+            # define the bytearray of the audio data
+            # self._audio_data = bytearray()
 
-    # Split the encoded audio data into chunks
-    for i in range(0, len(base64_audio), 216):
-        # Get the chunk
-        chunk = base64_audio[i : i + 216]
+        def write(self, audio_buffer: memoryview) -> int:
+            # write the current audio received to the audio_data
+            # self._audio_data.extend(audio_buffer)
 
-        # Send the chunk to the websocket
-        ws.send(
-            {"event": "media", "streamSid": stream_sid, "media": {"payload": chunk}}
-        )
+            # append the audio buffer to the full audio
+            full_audio.append(audio_buffer.tobytes())
+            # print(audio_buffer.tobytes())
+            return len(audio_buffer)
 
-    ws.send({"event": "mark", "streamSid": stream_sid, "mark": {"name": "my label"}})
+        def close(self) -> None:
+            print("Stream closed")
+
+    speech_config = speechsdk.SpeechConfig(
+        subscription=key, region=service_region, speech_recognition_language=language
+    )
+
+    # output raw audio in mulaw-x format 8khz and 8bit
+    speech_config.set_speech_synthesis_output_format(
+        speechsdk.SpeechSynthesisOutputFormat.Raw8Khz8BitMonoMULaw
+    )
+
+    # set voice name
+    speech_config.speech_synthesis_voice_name = speech_synthesis_voice_name
+
+    # make audio stream to push the audio to the array insted of a file
+    audio_stream_cb = CustomAudioOutputStreamCallback()
+    stream = speechsdk.audio.PushAudioOutputStream(audio_stream_cb)
+    audio_config = speechsdk.audio.AudioOutputConfig(stream=stream)
+
+    # initizlize the speech syntesizer
+    speech_synthesizer = speechsdk.SpeechSynthesizer(
+        speech_config=speech_config, audio_config=audio_config
+    )
+    syntesis_done = threading.Event()
+
+    def syntesizing_cb(evt):
+        # print(f"Syntesizing: {evt}")
+        pass
+
+    def syntesized_cb(evt):
+        print("SPEAKING READY:", evt.result.text)
+        full_audio.append(evt.result.text)
+
+    def canceled_cb(evt):
+        # print('CANCELED Syntesis: {}'.format(evt.reason))
+        syntesis_done.set()
+
+    speech_synthesizer.synthesizing.connect(syntesizing_cb)
+    speech_synthesizer.synthesis_completed.connect(syntesized_cb)
+    speech_synthesizer.synthesis_canceled.connect(canceled_cb)
+
+    # def syntesize_audio(text):
+    #     speech_synthesizer.start_speaking_text_async(text)
+    #     #syntesis_done.wait()
+    #     speech_synthesizer.stop_speaking_async()
+
+    # syntesize_thread = threading.Thread(target=syntesize_audio, kwargs ={'text': "здравейте"})
+    # syntesize_thread.start()
+    # speech_synthesizer.start_speaking_text_async()
+
+    speech_synthesizer.speak_text_async(text).get()
+    # syntesis_done.wait()
+    # syntesize_audio('здравейте')
+    final_audio = b"".join(full_audio)
+    # print(final_audio)
+
+    # mulaw_audio = final_audio
+    # audio = audioop.lin2ulaw(mulaw_audio, 2)
+    base64_audio = base64.b64encode(final_audio).decode("utf-8")
+    return base64_audio
 
 
-def send_raw_audio(file_path, ws, stream_sid):
-    data, samplerate = soundfile.read(file_path)
-    soundfile.write(file_path, data, samplerate)
-    with wave.open(file_path, "rb") as wav_file:
-        while True:
-            wav_data = wav_file.readframes(320)
-            if not wav_data:
-                ws.send(
-                    {
-                        "event": "mark",
-                        "streamSid": stream_sid,
-                        "mark": {"name": "my label"},
-                    }
-                )
-                break
-            mulaw_data = audioop.lin2ulaw(wav_data, 2)
-            base64_audio = base64.b64encode(mulaw_data).decode("utf-8")
+async def play_text_raw_audio(
+    websocket: WebSocket, stream_sid: str, text: str, streaming: bool = False
+):
 
-            ws.send(
-                {
-                    "event": "media",
-                    "streamSid": stream_sid,
-                    "media": {"payload": base64_audio},
-                }
-            )
-
-
-def send_raw_audio_new(file_path, ws, stream_sid):
-    data, samplerate = soundfile.read(file_path)
-    soundfile.write(file_path, data, samplerate)
-    # soundfile.write(file_path, data, samplerate, format='WAV', subtype='ULAW')
-    with open(file_path, "rb") as wav_file:
-        # wav_file.seek(44, os.SEEK_SET)
-        while True:
-            wav_data = wav_file.read()
-            # print("WAV data:", len(wav_data))
-            if not wav_data:
-                print("Finished sending audio")
-                ws.send(
-                    {
-                        "event": "mark",
-                        "streamSid": stream_sid,
-                        "mark": {"name": "my label"},
-                    }
-                )
-                break
-            mulaw_data = audioop.lin2ulaw(wav_data, 2)
-            base64_audio = base64.b64encode(mulaw_data).decode("utf-8")
-
-            # print('sending media event')
-            ws.send(
-                {
-                    "event": "media",
-                    "streamSid": stream_sid,
-                    "media": {"payload": base64_audio},
-                }
-            )
-
-
-async def play_text_raw_audio(websocket: WebSocket, stream_sid: str, text: str, streaming: bool = False):
-    audio_string = get_audio_string_from_text(text)
+    audio_string = await text_to_base64_audio(text)
     for i in range(0, len(audio_string), 216):
         # Get the chunk
         chunk = audio_string[i : i + 216]
@@ -227,13 +232,18 @@ async def play_text_raw_audio(websocket: WebSocket, stream_sid: str, text: str, 
             # LAST CHUNK
             if i + len(chunk) >= len(audio_string):
                 await websocket.send_json(
-                    {"event": "mark", "streamSid": stream_sid, "mark": {"name": "my label"}}
+                    {
+                        "event": "mark",
+                        "streamSid": stream_sid,
+                        "mark": {"name": "my label"},
+                    }
                 )
 
 
+from langchain_core.messages.ai import AIMessageChunk
 
-from  langchain_core.messages.ai import AIMessageChunk
-async def get_tokens(input:str, agent, message_history):
+
+async def get_tokens(input: str, agent, message_history):
     path_status = {}
     async for chunk in agent.astream_log(
         {"input": input, "chat_history": message_history.messages},
@@ -245,7 +255,7 @@ async def get_tokens(input:str, agent, message_history):
                 if op["path"] not in path_status:
                     path_status[op["path"]] = op["value"]
                 else:
-                    if not isinstance( op["value"], dict):
+                    if not isinstance(op["value"], dict):
                         path_status[op["path"]] += op["value"]
         if isinstance(path_status.get(op["path"]), AIMessageChunk):
             yield path_status.get(op["path"]).content
