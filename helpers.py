@@ -1,5 +1,6 @@
-import json
 import os
+import json
+import re
 import threading
 import wave
 import base64
@@ -259,3 +260,33 @@ async def get_tokens(input: str, agent, message_history):
                         path_status[op["path"]] += op["value"]
         if isinstance(path_status.get(op["path"]), AIMessageChunk):
             yield path_status.get(op["path"]).content
+
+
+async def speak_streaming_tokens(
+    input: str, agent, message_history, websocket, stream_sid: str
+):
+
+    # look for this characters to start speaking text
+    pattern = re.compile(r"[.!?]")
+    prev_found_ends_len = 0
+
+    async for token in get_tokens(
+        input=input,
+        agent=agent,
+        message_history=message_history,
+    ):
+        sentence_ends = [match.start() for match in re.finditer(pattern, token)]
+        if len(sentence_ends) > prev_found_ends_len:
+            text = (
+                token[: sentence_ends[0] + 1]
+                if prev_found_ends_len == 0
+                else token[sentence_ends[-2] + 1 :]
+            )
+            print("Speaking :", text)
+            await play_text_raw_audio(
+                websocket=websocket,
+                stream_sid=stream_sid,
+                text=text,
+                streaming=True,
+            )
+            prev_found_ends_len += 1

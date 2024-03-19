@@ -16,6 +16,7 @@ from helpers import (
     AzureSpeechSynthesizer,
     get_tokens,
     play_text_raw_audio,
+    speak_streaming_tokens,
 )
 from langchain_community.chat_message_histories import ChatMessageHistory
 
@@ -131,40 +132,16 @@ async def echo(websocket: WebSocket):
                         print("Recognized: ", speech_recognizer.recognitions)
                         prev_recognitions_len = len(speech_recognizer.recognitions)
 
-                        # get answer from the bot based on what the user has said
-                        # answer = agent_with_chat_history.invoke(
-                        #     {"input": curr_recognition},
-                        #     {"configurable": {"session_id": "asd"}},
-                        # )["output"]
-
-                        # print(f"Chatbot answer {answer}")
-
-                        pattern = re.compile(r"[.!?]")
-                        found = 0
                         # disable recognized until speaking is finished
                         can_recognize = False
-                        async for token in get_tokens(
+
+                        await speak_streaming_tokens(
                             input=curr_recognition,
                             agent=agent,
                             message_history=message_history,
-                        ):
-                            sentence_ends = [
-                                match.start() for match in re.finditer(pattern, token)
-                            ]
-                            if len(sentence_ends) > found:
-                                text = (
-                                    token[: sentence_ends[0] + 1]
-                                    if found == 0
-                                    else token[sentence_ends[-2] + 1 :]
-                                )
-                                print("Speaking :", text)
-                                await play_text_raw_audio(
-                                    websocket=websocket,
-                                    stream_sid=packet["streamSid"],
-                                    text=text,
-                                    streaming=True,
-                                )
-                                found += 1
+                            websocket=websocket,
+                            stream_sid=packet["streamSid"],
+                        )
 
                         await websocket.send_json(
                             {
