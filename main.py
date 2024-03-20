@@ -13,8 +13,6 @@ from dotenv import load_dotenv
 from agent import create_agent
 from helpers import (
     AzureSpeechRecognizer,
-    AzureSpeechSynthesizer,
-    get_tokens,
     play_text_raw_audio,
     speak_streaming_tokens,
 )
@@ -96,11 +94,11 @@ async def echo(websocket: WebSocket):
             if packet["event"] == "start":
                 print("\nStreaming has started")
                 # welcome phrase
-                await play_text_raw_audio(
-                    websocket=websocket,
-                    stream_sid=packet["streamSid"],
-                    text="Здравейте, аз съм бот на абаут ю.",
-                )
+                # await play_text_raw_audio(
+                #     websocket=websocket,
+                #     stream_sid=packet["streamSid"],
+                #     text="Здравейте, аз съм бот на абаут ю.",
+                # )
 
             elif packet["event"] == "stop":
                 print("\nStreaming has stopped")
@@ -134,7 +132,6 @@ async def echo(websocket: WebSocket):
 
                         # disable recognized until speaking is finished
                         can_recognize = False
-
                         await speak_streaming_tokens(
                             input=curr_recognition,
                             agent=agent,
