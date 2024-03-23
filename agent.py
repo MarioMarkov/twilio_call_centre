@@ -1,12 +1,15 @@
 import os
+import platform
 from dotenv import load_dotenv
 from langchain_community.document_loaders import TextLoader
 from langchain_openai import OpenAIEmbeddings
 from langchain_openai import ChatOpenAI
 
-# from langchain_community.vectorstores import FAISS
 
-from langchain_community.vectorstores import Chroma
+if platform.system().isin(["Windows", "Linux"]):
+    from langchain_community.vectorstores import FAISS
+else:
+    from langchain_community.vectorstores import Chroma
 
 from langchain.text_splitter import (
     CharacterTextSplitter,
@@ -37,7 +40,11 @@ def create_agent(retrieval_file_name: str):
     print("Chunks: ", len(docs))
     embedings_model = OpenAIEmbeddings(model="text-embedding-3-small")
 
-    db = Chroma.from_documents(docs, embedings_model)
+    if platform.system().isin(["Windows", "Linux"]):
+        db = FAISS.from_documents(docs, embedings_model)
+    else:
+        db = Chroma.from_documents(docs, embedings_model)
+
     retriever = db.as_retriever(search_kwargs={"k": 1})
 
     from langchain.agents.agent_toolkits import create_retriever_tool
