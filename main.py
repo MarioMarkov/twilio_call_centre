@@ -32,6 +32,13 @@ message_history = ChatMessageHistory()
 message_history.clear()
 
 
+@app.get("/get_message")
+def get_message(request: Request):
+    """Accept a phone call."""
+
+    return "I am a bad guy"
+
+
 @app.get("/call")
 def call(request: Request):
     """Accept a phone call."""

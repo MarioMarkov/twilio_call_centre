@@ -6,7 +6,7 @@ from langchain_openai import OpenAIEmbeddings
 from langchain_openai import ChatOpenAI
 
 
-if platform.system().isin(["Windows", "Linux"]):
+if platform.system() in ["Windows", "Linux"]:
     from langchain_community.vectorstores import FAISS
 else:
     from langchain_community.vectorstores import Chroma
@@ -40,7 +40,7 @@ def create_agent(retrieval_file_name: str):
     print("Chunks: ", len(docs))
     embedings_model = OpenAIEmbeddings(model="text-embedding-3-small")
 
-    if platform.system().isin(["Windows", "Linux"]):
+    if platform.system() in ["Windows", "Linux"]:
         db = FAISS.from_documents(docs, embedings_model)
     else:
         db = Chroma.from_documents(docs, embedings_model)
