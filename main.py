@@ -32,8 +32,8 @@ message_history = ChatMessageHistory()
 message_history.clear()
 
 
-@app.get("/get_message")
-def get_message(request: Request):
+@app.post("/get_message")
+def get_message():
     """Accept a phone call."""
 
     return "I am a bad guy"
@@ -75,6 +75,8 @@ def call(request: Request):
 async def echo(websocket: WebSocket):
     """Receive and recognize audio stream."""
 
+    # get_message()
+
     # samples_per_second=8000, bits_per_sample=16, channels=1
     speech_recognizer = AzureSpeechRecognizer(language="bg-BG")
     # speech_synthesizer = AzureSpeechSynthesizer(language="bg-BG", speech_synthesis_voice_name = 'bg-BG-BorislavNeural')
@@ -86,6 +88,7 @@ async def echo(websocket: WebSocket):
 
     # start accepting messages
     await websocket.accept()
+    # await websocket.send_text(f"Echo: from ws")
 
     # catch the WebSocketDisconnect exception
     try:
@@ -172,7 +175,10 @@ if __name__ == "__main__":
 
     port = 5000
     # Twilio Config
-    public_url = ngrok.connect(port, bind_tls=True).public_url
+    # bind_tls=True returns only https
+    public_url = ngrok.connect(
+        port, bind_tls=True, domain="possum-enough-informally.ngrok-free.app"
+    ).public_url
     number = twilio_client.incoming_phone_numbers.list()[0]
     number.update(voice_url=public_url + "/call")
     print(f"Waiting for calls on {number.phone_number} public url: {public_url}")
