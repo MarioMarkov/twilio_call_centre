@@ -2,7 +2,6 @@ from fastapi import FastAPI, Request, Response, WebSocket, WebSocketDisconnect
 
 app = FastAPI()
 
-
 @app.get("/get_message")
 def call(request: Request):
     """Accept a phone call."""

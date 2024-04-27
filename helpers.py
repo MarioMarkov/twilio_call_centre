@@ -269,7 +269,7 @@ async def speak_streaming_tokens(
     # look for this characters to start speaking text
     pattern = re.compile(r"[.!?]")
     prev_found_ends_len = 0
-
+    full_answer = ""
     async for token in get_tokens(
         input=input,
         agent=agent,
@@ -290,3 +290,6 @@ async def speak_streaming_tokens(
                 streaming=True,
             )
             prev_found_ends_len += 1
+            full_answer = full_answer + text
+
+    return full_answer

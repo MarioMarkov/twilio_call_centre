@@ -24,6 +24,8 @@ app = FastAPI()
 twilio_client = Client()
 agent = create_agent(retrieval_file_name="about_you")
 
+connections = {}
+
 
 # remote_agent = RemoteRunnable(
 #     "https://bot.happytree-937aa4bb.westus2.azurecontainerapps.io"
@@ -49,7 +51,6 @@ def call(request: Request):
     # start stream
     start = Connect()
     response.append(start)
-    print(request.url.hostname)
     start.stream(url=f"wss://{request.url.hostname}/stream")
 
     return Response(content=str(response), media_type="application/xml")
@@ -65,16 +66,35 @@ def call(request: Request):
     # start stream
     start = Connect()
     response.append(start)
-    print(request.url.hostname)
     start.stream(url=f"wss://{request.url.hostname}/stream")
 
     return Response(content=str(response), media_type="application/xml")
 
 
+@app.websocket("/client_messages")
+async def client_messages(websocket: WebSocket):
+    print("Connected client messages websocket")
+    connections["client"] = websocket
+    await websocket.accept()
+    try:
+        while True:
+            data = await websocket.receive_text()
+            # Send received message to all connected clients on the other WebSocket endpoint
+            print(f"Received: {data}")
+    except WebSocketDisconnect:
+        print("Client websocket disconnected")
+
+
 @app.websocket("/stream")
 async def echo(websocket: WebSocket):
     """Receive and recognize audio stream."""
-
+    # print("##############")
+    # print(websocket.url)
+    # print(websocket.base_url)
+    # print(websocket.headers)
+    # print(websocket.query_params)
+    # print(websocket.client)
+    # print("##############")
     # get_message()
 
     # samples_per_second=8000, bits_per_sample=16, channels=1
@@ -85,14 +105,16 @@ async def echo(websocket: WebSocket):
 
     # this stops recognizing when the bot is talking
     can_recognize = True
+    # print("Twilio websocket", websocket)
 
+    connections["twilio"] = websocket
     # start accepting messages
     await websocket.accept()
-    # await websocket.send_text(f"Echo: from ws")
 
     # catch the WebSocketDisconnect exception
     try:
         while True:
+
             data = await websocket.receive_text()
             packet = json.loads(data)
             # this means the bot has stopped speaking
@@ -121,8 +143,6 @@ async def echo(websocket: WebSocket):
                 break
 
             elif packet["event"] == "media":
-                if packet["media"]["track"] == "outbound":
-                    print("sending audio.............")
 
                 # get media data
                 data = packet["media"]["payload"]
@@ -142,12 +162,23 @@ async def echo(websocket: WebSocket):
 
                         # disable recognized until speaking is finished
                         can_recognize = False
-                        await speak_streaming_tokens(
+                        await connections["client"].send_json(
+                            {
+                                "event": "message",
+                                "from": "person",
+                                "result": curr_recognition,
+                            }
+                        )
+                        bot_answer = await speak_streaming_tokens(
                             input=curr_recognition,
                             agent=agent,
                             message_history=message_history,
                             websocket=websocket,
                             stream_sid=packet["streamSid"],
+                        )
+
+                        await connections["client"].send_json(
+                            {"event": "message", "from": "bot", "result": bot_answer}
                         )
 
                         await websocket.send_json(
@@ -166,7 +197,6 @@ async def echo(websocket: WebSocket):
 
     except WebSocketDisconnect:
         print("WebSocketDisconnect caught")
-        await websocket.close()
 
 
 if __name__ == "__main__":
@@ -183,4 +213,4 @@ if __name__ == "__main__":
     number.update(voice_url=public_url + "/call")
     print(f"Waiting for calls on {number.phone_number} public url: {public_url}")
 
-    uvicorn.run("main:app", host="localhost", port=port)
+    uvicorn.run("main:app", host="localhost", port=port, log_level="critical")
