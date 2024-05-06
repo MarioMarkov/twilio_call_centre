@@ -209,7 +209,7 @@ if __name__ == "__main__":
     public_url = ngrok.connect(
         port, bind_tls=True, domain="possum-enough-informally.ngrok-free.app"
     ).public_url
-    number = twilio_client.incoming_phone_numbers.list()[0]
+    number = twilio_client.incoming_phone_numbers.list()[1]
     number.update(voice_url=public_url + "/call")
     print(f"Waiting for calls on {number.phone_number} public url: {public_url}")
 
