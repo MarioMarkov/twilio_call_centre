@@ -1,6 +1,7 @@
 from fastapi import FastAPI, Request, Response
 from twilio.twiml.voice_response import VoiceResponse
 from twilio.rest import Client
+from twilio.twiml.voice_response import VoiceResponse, Connect
 
 from dotenv import load_dotenv
 
@@ -11,13 +12,17 @@ app = FastAPI()
 twilio_client = Client()
 
 
-@app.get("/call")
+@app.post("/call")
 def call(request: Request):
     """Accept a phone call."""
 
     # intiazlize voice response
     response = VoiceResponse()
-    response.say("Hello world")
+
+    # start stream
+    start = Connect()
+    response.append(start)
+    start.stream(url=f"wss://{request.url.hostname}/stream")
 
     return Response(content=str(response), media_type="application/xml")
 
@@ -28,7 +33,11 @@ def call(request: Request):
 
     # intiazlize voice response
     response = VoiceResponse()
-    response.say("Hello world")
+
+    # start stream
+    start = Connect()
+    response.append(start)
+    start.stream(url=f"wss://{request.url.hostname}/stream")
 
     return Response(content=str(response), media_type="application/xml")
 
@@ -37,8 +46,8 @@ if __name__ == "__main__":
     from pyngrok import ngrok
     import uvicorn
 
-    port = 5000
-    
+    port = 5002
+
     public_url = ngrok.connect(port, bind_tls=True).public_url
     # print("Numbers: ", twilio_client.incoming_phone_numbers.list())
 

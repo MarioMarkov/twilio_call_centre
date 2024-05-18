@@ -20,7 +20,25 @@ from langchain_community.chat_message_histories import ChatMessageHistory
 
 load_dotenv()
 
+from fastapi.middleware.cors import CORSMiddleware
+
 app = FastAPI()
+
+# origins = [
+#     "http://localhost.tiangolo.com",
+#     "https://localhost.tiangolo.com",
+#     "http://localhost",
+#     "http://localhost:8080",
+# ]
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 twilio_client = Client()
 agent = create_agent(retrieval_file_name="about_you")
 
@@ -56,7 +74,7 @@ def call(request: Request):
     return Response(content=str(response), media_type="application/xml")
 
 
-@app.get("/call")
+@app.post("/call")
 def call(request: Request):
     """Accept a phone call."""
 
@@ -203,14 +221,14 @@ if __name__ == "__main__":
     from pyngrok import ngrok
     import uvicorn
 
-    port = 5000
+    port = 5002
     # Twilio Config
     # bind_tls=True returns only https
     public_url = ngrok.connect(
         port, bind_tls=True, domain="possum-enough-informally.ngrok-free.app"
     ).public_url
-    number = twilio_client.incoming_phone_numbers.list()[1]
+    number = twilio_client.incoming_phone_numbers.list()[0]
     number.update(voice_url=public_url + "/call")
     print(f"Waiting for calls on {number.phone_number} public url: {public_url}")
 
-    uvicorn.run("main:app", host="localhost", port=port, log_level="critical")
+    uvicorn.run("main:app", host="localhost", port=port)

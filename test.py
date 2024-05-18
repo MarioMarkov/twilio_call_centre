@@ -2,20 +2,29 @@ from fastapi import FastAPI, Request, Response, WebSocket, WebSocketDisconnect
 
 app = FastAPI()
 
-@app.get("/get_message")
-def call(request: Request):
-    """Accept a phone call."""
 
-    return "I am a bad guy"
+@app.websocket("/client_messages")
+async def client_messages(websocket: WebSocket):
+    print("Connected client messages websocket")
+    await websocket.accept()
+    import time
+
+    try:
+        for i in range(0, 3):
+            time.sleep(2)
+            print("Sending message")
+            await websocket.send_json(
+                {
+                    "event": "message",
+                    "from": "person",
+                    "result": f"Mario {i}",
+                }
+            )
+    except WebSocketDisconnect:
+        print("Client websocket disconnected")
 
 
 if __name__ == "__main__":
-    from pyngrok import ngrok
     import uvicorn
 
-    port = 5000
-    # Twilio Config
-    public_url = ngrok.connect(port, bind_tls=True).public_url
-    print(f"Public url: {public_url}")
-
-    uvicorn.run("test:app", host="localhost", port=port)
+    uvicorn.run("test:app", host="localhost", port=5000)
