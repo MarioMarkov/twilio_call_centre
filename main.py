@@ -1,7 +1,7 @@
 import json
 import sys
 from fastapi import FastAPI, Request, Response, WebSocket, WebSocketDisconnect
-from langserve import RemoteRunnable
+#from langserve import RemoteRunnable
 from twilio.twiml.voice_response import VoiceResponse, Connect
 from twilio.rest import Client
 import re
@@ -24,13 +24,6 @@ from fastapi.middleware.cors import CORSMiddleware
 
 app = FastAPI()
 
-# origins = [
-#     "http://localhost.tiangolo.com",
-#     "https://localhost.tiangolo.com",
-#     "http://localhost",
-#     "http://localhost:8080",
-# ]
-
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -40,7 +33,7 @@ app.add_middleware(
 )
 
 twilio_client = Client()
-agent = create_agent(retrieval_file_name="about_you")
+#agent = create_agent(retrieval_file_name="about_you")
 
 connections = {}
 
@@ -60,9 +53,14 @@ def get_message():
 
 
 @app.get("/call")
-def call(request: Request):
+async def call(request: Request):
     """Accept a phone call."""
-
+    try:
+        request_json = await request.json()
+        print(request_json)
+    except Exception as e:
+        print(f"Failed to parse request body as JSON: {e}")
+    
     # intiazlize voice response
     response = VoiceResponse()
 
@@ -75,16 +73,25 @@ def call(request: Request):
 
 
 @app.post("/call")
-def call(request: Request):
+async def call(request: Request):
     """Accept a phone call."""
+   
+    request_details = await request.form()
+    called_number = request_details.get("Called")
+    from_number = request_details.get("From")
+    to_state = request_details.get("ToState")
+    caller_country = request_details.get("CallerCountry")
+    direction = request_details.get("Direction")
+    caller_phone_num = request_details.get("Caller")
+
 
     # intiazlize voice response
     response = VoiceResponse()
-
+    
     # start stream
     start = Connect()
     response.append(start)
-    start.stream(url=f"wss://{request.url.hostname}/stream")
+    start.stream(url=f"wss://{request.url.hostname}/stream/{caller_phone_num}")
 
     return Response(content=str(response), media_type="application/xml")
 
@@ -103,17 +110,19 @@ async def client_messages(websocket: WebSocket):
         print("Client websocket disconnected")
 
 
-@app.websocket("/stream")
-async def echo(websocket: WebSocket):
+@app.websocket("/stream/{caller_phone_num}")
+async def echo(websocket: WebSocket,caller_phone_num:str ):
     """Receive and recognize audio stream."""
-    # print("##############")
+    print("##############")
     # print(websocket.url)
     # print(websocket.base_url)
-    # print(websocket.headers)
-    # print(websocket.query_params)
-    # print(websocket.client)
-    # print("##############")
-    # get_message()
+    print(websocket.headers)
+    print(websocket.query_params)
+    print(websocket.client)
+    print("##############")
+    #caller_phone_num = websocket.query_params
+
+    print("caller from ws", caller_phone_num)
 
     # samples_per_second=8000, bits_per_sample=16, channels=1
     speech_recognizer = AzureSpeechRecognizer(language="bg-BG")
@@ -230,5 +239,10 @@ if __name__ == "__main__":
     number = twilio_client.incoming_phone_numbers.list()[0]
     number.update(voice_url=public_url + "/call")
     print(f"Waiting for calls on {number.phone_number} public url: {public_url}")
+    try:
 
-    uvicorn.run("main:app", host="localhost", port=port)
+        uvicorn.run("main:app", host="localhost", port=port)
+    except KeyboardInterrupt:
+        import os
+        import signal
+        os.kill(os.getpid(), signal.SIGINT)
