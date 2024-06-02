@@ -9,7 +9,6 @@ import re
 # from urllib.parse import urlparse
 from dotenv import load_dotenv
 
-# from agent import agent_with_chat_history, message_history
 from agent import create_agent
 from helpers import (
     AzureSpeechRecognizer,
@@ -33,7 +32,7 @@ app.add_middleware(
 )
 
 twilio_client = Client()
-#agent = create_agent(retrieval_file_name="about_you")
+agent = create_agent(retrieval_file_name="about_you")
 
 connections = {}
 
@@ -55,12 +54,6 @@ def get_message():
 @app.get("/call")
 async def call(request: Request):
     """Accept a phone call."""
-    try:
-        request_json = await request.json()
-        print(request_json)
-    except Exception as e:
-        print(f"Failed to parse request body as JSON: {e}")
-    
     # intiazlize voice response
     response = VoiceResponse()
 
@@ -111,18 +104,16 @@ async def client_messages(websocket: WebSocket):
 
 
 @app.websocket("/stream/{caller_phone_num}")
-async def echo(websocket: WebSocket,caller_phone_num:str ):
+async def echo(websocket: WebSocket, caller_phone_num:str):
     """Receive and recognize audio stream."""
     print("##############")
     # print(websocket.url)
     # print(websocket.base_url)
-    print(websocket.headers)
-    print(websocket.query_params)
-    print(websocket.client)
-    print("##############")
+    # print(websocket.headers)
+    # print(websocket.query_params)
+    # print(websocket.client)
+    # print("##############")
     #caller_phone_num = websocket.query_params
-
-    print("caller from ws", caller_phone_num)
 
     # samples_per_second=8000, bits_per_sample=16, channels=1
     speech_recognizer = AzureSpeechRecognizer(language="bg-BG")
@@ -144,6 +135,7 @@ async def echo(websocket: WebSocket,caller_phone_num:str ):
 
             data = await websocket.receive_text()
             packet = json.loads(data)
+            
             # this means the bot has stopped speaking
             if packet["event"] == "mark":
                 print("Received mark. Speaking has stopped")
@@ -152,6 +144,9 @@ async def echo(websocket: WebSocket,caller_phone_num:str ):
 
             if packet["event"] == "start":
                 print("\nStreaming has started")
+                await connections["client"].send_json(
+                    {"event": "call_start", "from": "websocket", "from_number": caller_phone_num}
+                )
                 # welcome phrase
                 # await play_text_raw_audio(
                 #     websocket=websocket,
@@ -227,21 +222,26 @@ async def echo(websocket: WebSocket,caller_phone_num:str ):
 
 
 if __name__ == "__main__":
-    from pyngrok import ngrok
+    #from pyngrok import ngrok
     import uvicorn
+    import ngrok
 
-    port = 5002
+    port = 8080
     # Twilio Config
-    # bind_tls=True returns only https
-    public_url = ngrok.connect(
-        port, bind_tls=True, domain="possum-enough-informally.ngrok-free.app"
-    ).public_url
+    #bind_tls=True returns only https
+    # public_url = ngrok.connect(
+    #     port, bind_tls=True, domain="possum-enough-informally.ngrok-free.app"
+    # ).public_url
+    listener = ngrok.forward(f"http://localhost:{port}",authtoken_from_env=True, domain="possum-enough-informally.ngrok-free.app")
+    public_url = listener.url()
+    #print(f"Ingress established at: {public_url}")
     number = twilio_client.incoming_phone_numbers.list()[0]
     number.update(voice_url=public_url + "/call")
+
     print(f"Waiting for calls on {number.phone_number} public url: {public_url}")
     try:
 
-        uvicorn.run("main:app", host="localhost", port=port)
+        uvicorn.run("main:app", host="localhost",port=port)
     except KeyboardInterrupt:
         import os
         import signal
