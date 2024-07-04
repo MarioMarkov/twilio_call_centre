@@ -156,6 +156,9 @@ async def echo(websocket: WebSocket, caller_phone_num:str):
 
             elif packet["event"] == "stop":
                 print("\nStreaming has stopped")
+                await connections["client"].send_json(
+                    {"event": "call_end"}
+                )
                 await websocket.close()
                 break
 
