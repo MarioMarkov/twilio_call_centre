@@ -1,5 +1,6 @@
 import json
 import sys
+import time
 from fastapi import FastAPI, Request, Response, WebSocket, WebSocketDisconnect
 #from langserve import RemoteRunnable
 from twilio.twiml.voice_response import VoiceResponse, Connect
@@ -94,13 +95,31 @@ async def client_messages(websocket: WebSocket):
     print("Connected client messages websocket")
     connections["client"] = websocket
     await websocket.accept()
-    try:
-        while True:
-            data = await websocket.receive_text()
-            # Send received message to all connected clients on the other WebSocket endpoint
-            print(f"Received: {data}")
-    except WebSocketDisconnect:
-        print("Client websocket disconnected")
+    await connections["client"].send_json(
+                    {"event": "call_start", "from": "websocket", "from_number": "36723453452134"}
+    )
+    await connections["client"].send_json(
+                            {
+                                "event": "message",
+                                "from": "person",
+                                "result": "test recognition",
+                            }
+                        )
+    await connections["client"].send_json(
+                            {"event": "message", "from": "bot", "result": "I am the bot "}
+                        )
+    time.sleep(3)
+    await connections["client"].send_json(
+                    {"event": "call_end"}
+        )
+    
+    # try:
+    #     while True:
+    #         data = await websocket.receive_text()
+    #         # Send received message to all connected clients on the other WebSocket endpoint
+    #         print(f"Received: {data}")
+    # except WebSocketDisconnect:
+    #     print("Client websocket disconnected")
 
 
 @app.websocket("/stream/{caller_phone_num}")
@@ -147,6 +166,7 @@ async def echo(websocket: WebSocket, caller_phone_num:str):
                 await connections["client"].send_json(
                     {"event": "call_start", "from": "websocket", "from_number": caller_phone_num}
                 )
+
                 # welcome phrase
                 # await play_text_raw_audio(
                 #     websocket=websocket,
