@@ -1,3 +1,5 @@
+import asyncio
+import datetime
 import json
 import sys
 import time
@@ -94,23 +96,28 @@ async def call(request: Request):
 async def client_messages(websocket: WebSocket):
     print("Connected client messages websocket")
     connections["client"] = websocket
+
+
     await websocket.accept()
     await connections["client"].send_json(
-                    {"event": "call_start", "from": "websocket", "from_number": "36723453452134"}
-    )
+                    {"event": "call_start", "from": "websocket", "from_number": "36723453452134", "timestamp": datetime.datetime.now().isoformat()})
+    await asyncio.sleep(1)
     await connections["client"].send_json(
                             {
                                 "event": "message",
                                 "from": "person",
                                 "result": "test recognition",
+                                "timestamp": datetime.datetime.now().isoformat()
                             }
                         )
+    await asyncio.sleep(1)
     await connections["client"].send_json(
-                            {"event": "message", "from": "bot", "result": "I am the bot "}
+                            {"event": "message", "from": "bot", "result": "I am the bot ", "timestamp": datetime.datetime.now().isoformat()}
                         )
-    time.sleep(3)
+    await asyncio.sleep(1)
+
     await connections["client"].send_json(
-                    {"event": "call_end"}
+                    {"event": "call_end"}   
         )
     
     # try:
