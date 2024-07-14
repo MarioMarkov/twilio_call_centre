@@ -99,34 +99,34 @@ async def client_messages(websocket: WebSocket):
 
 
     await websocket.accept()
-    await connections["client"].send_json(
-                    {"event": "call_start", "from": "websocket", "from_number": "36723453452134", "timestamp": datetime.datetime.now().isoformat()})
-    await asyncio.sleep(1)
-    await connections["client"].send_json(
-                            {
-                                "event": "message",
-                                "from": "person",
-                                "result": "test recognition",
-                                "timestamp": datetime.datetime.now().isoformat()
-                            }
-                        )
-    await asyncio.sleep(1)
-    await connections["client"].send_json(
-                            {"event": "message", "from": "bot", "result": "I am the bot ", "timestamp": datetime.datetime.now().isoformat()}
-                        )
-    await asyncio.sleep(1)
+    # await connections["client"].send_json(
+    #                 {"event": "call_start", "from": "websocket", "from_number": "36723453452134", "timestamp": datetime.datetime.now().isoformat()})
+    # await asyncio.sleep(2)
+    # await connections["client"].send_json(
+    #                         {
+    #                             "event": "message",
+    #                             "from": "person",
+    #                             "result": "test recognition",
+    #                             "timestamp": datetime.datetime.now().isoformat()
+    #                         }
+    #                     )
+    # await asyncio.sleep(1)
+    # await connections["client"].send_json(
+    #                         {"event": "message", "from": "bot", "result": "I am the bot ", "timestamp": datetime.datetime.now().isoformat()}
+    #                     )
+    # await asyncio.sleep(1)
 
-    await connections["client"].send_json(
-                    {"event": "call_end"}   
-        )
+    # await connections["client"].send_json(
+    #                 {"event": "call_end"}   
+    #     )
     
-    # try:
-    #     while True:
-    #         data = await websocket.receive_text()
-    #         # Send received message to all connected clients on the other WebSocket endpoint
-    #         print(f"Received: {data}")
-    # except WebSocketDisconnect:
-    #     print("Client websocket disconnected")
+    try:
+        while True:
+            data = await websocket.receive_text()
+            # Send received message to all connected clients on the other WebSocket endpoint
+            print(f"Received: {data}")
+    except WebSocketDisconnect:
+        print("Client websocket disconnected")
 
 
 @app.websocket("/stream/{caller_phone_num}")
@@ -219,6 +219,7 @@ async def echo(websocket: WebSocket, caller_phone_num:str):
                                 "event": "message",
                                 "from": "person",
                                 "result": curr_recognition,
+                                "timestamp": datetime.datetime.now().isoformat()
                             }
                         )
                         bot_answer = await speak_streaming_tokens(
@@ -230,7 +231,8 @@ async def echo(websocket: WebSocket, caller_phone_num:str):
                         )
 
                         await connections["client"].send_json(
-                            {"event": "message", "from": "bot", "result": bot_answer}
+                            {"event": "message", "from": "bot", "result": bot_answer,"timestamp": datetime.datetime.now().isoformat()
+}
                         )
 
                         await websocket.send_json(
