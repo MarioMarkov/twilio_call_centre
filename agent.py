@@ -6,10 +6,10 @@ from langchain_openai import OpenAIEmbeddings
 from langchain_openai import ChatOpenAI
 
 
-if platform.system() in ["Windows", "Linux"]:
-    from langchain_community.vectorstores import FAISS
-else:
-    from langchain_community.vectorstores import Chroma
+# if platform.system() in ["Windows", "Linux"]:
+#     from langchain_community.vectorstores import FAISS
+# else:
+from langchain_community.vectorstores import Chroma
 
 from langchain.text_splitter import (
     CharacterTextSplitter,
@@ -25,7 +25,9 @@ api_key = os.getenv("OPENAI_API_KEY")
 
 def create_agent(retrieval_file_name: str):
     # Loading knowledge retriever
-    loader = TextLoader(f"./retrieval/{retrieval_file_name}.txt", encoding="UTF-8")
+    loader = TextLoader(
+        f"./retrieval_documents/{retrieval_file_name}.txt", encoding="UTF-8"
+    )
     data = loader.load()
     # text_splitter = CharacterTextSplitter(
     #     separator="\n\n",
@@ -38,12 +40,20 @@ def create_agent(retrieval_file_name: str):
     )
     docs = text_splitter.split_documents(data)
     print("Chunks: ", len(docs))
-    embedings_model = OpenAIEmbeddings(model="text-embedding-3-small")
+    # embedings_model = OpenAIEmbeddings(model="text-embedding-3-small")
+    from langchain_huggingface import HuggingFaceEmbeddings
 
-    if platform.system() in ["Windows", "Linux"]:
-        db = FAISS.from_documents(docs, embedings_model)
-    else:
-        db = Chroma.from_documents(docs, embedings_model)
+    model_name = "sentence-transformers/all-MiniLM-L6-v2"
+    model_kwargs = {"device": "cpu"}
+    embedings_model = HuggingFaceEmbeddings(
+        model_name=model_name,
+        model_kwargs=model_kwargs,
+    )
+
+    # if platform.system() in ["Windows", "Linux"]:
+    #     db = FAISS.from_documents(docs, embedings_model, persist_directory="/retriever")
+    # else:
+    db = Chroma.from_documents(docs, embedings_model, persist_directory="/retriever")
 
     retriever = db.as_retriever(search_kwargs={"k": 1})
 

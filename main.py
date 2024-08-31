@@ -1,16 +1,21 @@
-import asyncio
-import datetime
-import json
 import sys
 import time
-from fastapi import FastAPI, Request, Response, WebSocket, WebSocketDisconnect
-#from langserve import RemoteRunnable
-from twilio.twiml.voice_response import VoiceResponse, Connect
-from twilio.rest import Client
-import re
+import json
+import asyncio
+import datetime
 
-# from urllib.parse import urlparse
 from dotenv import load_dotenv
+
+
+# from langserve import RemoteRunnable
+from twilio.rest import Client
+from twilio.twiml.voice_response import VoiceResponse, Connect
+
+
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi import FastAPI, Request, Response, WebSocket, WebSocketDisconnect
+
+
 
 from agent import create_agent
 from helpers import (
@@ -22,10 +27,8 @@ from langchain_community.chat_message_histories import ChatMessageHistory
 
 load_dotenv()
 
-from fastapi.middleware.cors import CORSMiddleware
 
 app = FastAPI()
-
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -36,6 +39,7 @@ app.add_middleware(
 
 twilio_client = Client()
 agent = create_agent(retrieval_file_name="about_you")
+
 
 connections = {}
 
@@ -71,7 +75,7 @@ async def call(request: Request):
 @app.post("/call")
 async def call(request: Request):
     """Accept a phone call."""
-   
+
     request_details = await request.form()
     called_number = request_details.get("Called")
     from_number = request_details.get("From")
@@ -80,10 +84,9 @@ async def call(request: Request):
     direction = request_details.get("Direction")
     caller_phone_num = request_details.get("Caller")
 
-
     # intiazlize voice response
     response = VoiceResponse()
-    
+
     # start stream
     start = Connect()
     response.append(start)
@@ -97,40 +100,48 @@ async def client_messages(websocket: WebSocket):
     print("Connected client messages websocket")
     connections["client"] = websocket
 
-
     await websocket.accept()
-    # await connections["client"].send_json(
-    #                 {"event": "call_start", "from": "websocket", "from_number": "36723453452134", "timestamp": datetime.datetime.now().isoformat()})
-    # await asyncio.sleep(2)
-    # await connections["client"].send_json(
-    #                         {
-    #                             "event": "message",
-    #                             "from": "person",
-    #                             "result": "test recognition",
-    #                             "timestamp": datetime.datetime.now().isoformat()
-    #                         }
-    #                     )
-    # await asyncio.sleep(1)
-    # await connections["client"].send_json(
-    #                         {"event": "message", "from": "bot", "result": "I am the bot ", "timestamp": datetime.datetime.now().isoformat()}
-    #                     )
-    # await asyncio.sleep(1)
+    await connections["client"].send_json(
+        {
+            "event": "call_start",
+            "from": "websocket",
+            "from_number": "36723453452134",
+            "timestamp": datetime.datetime.now().isoformat(),
+        }
+    )
+    await asyncio.sleep(2)
+    await connections["client"].send_json(
+        {
+            "event": "message",
+            "from": "person",
+            "result": "test recognition",
+            "timestamp": datetime.datetime.now().isoformat(),
+        }
+    )
+    await asyncio.sleep(1)
+    await connections["client"].send_json(
+        {
+            "event": "message",
+            "from": "bot",
+            "result": "I am the bot ",
+            "timestamp": datetime.datetime.now().isoformat(),
+        }
+    )
+    await asyncio.sleep(1)
 
-    # await connections["client"].send_json(
-    #                 {"event": "call_end"}   
-    #     )
-    
-    try:
-        while True:
-            data = await websocket.receive_text()
-            # Send received message to all connected clients on the other WebSocket endpoint
-            print(f"Received: {data}")
-    except WebSocketDisconnect:
-        print("Client websocket disconnected")
+    await connections["client"].send_json({"event": "call_end"})
+
+    # try:
+    #     while True:
+    #         data = await websocket.receive_text()
+    #         # Send received message to all connected clients on the other WebSocket endpoint
+    #         print(f"Received: {data}")
+    # except WebSocketDisconnect:
+    #     print("Client websocket disconnected")
 
 
 @app.websocket("/stream/{caller_phone_num}")
-async def echo(websocket: WebSocket, caller_phone_num:str):
+async def echo(websocket: WebSocket, caller_phone_num: str):
     """Receive and recognize audio stream."""
     print("##############")
     # print(websocket.url)
@@ -139,7 +150,7 @@ async def echo(websocket: WebSocket, caller_phone_num:str):
     # print(websocket.query_params)
     # print(websocket.client)
     # print("##############")
-    #caller_phone_num = websocket.query_params
+    # caller_phone_num = websocket.query_params
 
     # samples_per_second=8000, bits_per_sample=16, channels=1
     speech_recognizer = AzureSpeechRecognizer(language="bg-BG")
@@ -161,7 +172,7 @@ async def echo(websocket: WebSocket, caller_phone_num:str):
 
             data = await websocket.receive_text()
             packet = json.loads(data)
-            
+
             # this means the bot has stopped speaking
             if packet["event"] == "mark":
                 print("Received mark. Speaking has stopped")
@@ -171,7 +182,11 @@ async def echo(websocket: WebSocket, caller_phone_num:str):
             if packet["event"] == "start":
                 print("\nStreaming has started")
                 await connections["client"].send_json(
-                    {"event": "call_start", "from": "websocket", "from_number": caller_phone_num}
+                    {
+                        "event": "call_start",
+                        "from": "websocket",
+                        "from_number": caller_phone_num,
+                    }
                 )
 
                 # welcome phrase
@@ -183,9 +198,7 @@ async def echo(websocket: WebSocket, caller_phone_num:str):
 
             elif packet["event"] == "stop":
                 print("\nStreaming has stopped")
-                await connections["client"].send_json(
-                    {"event": "call_end"}
-                )
+                await connections["client"].send_json({"event": "call_end"})
                 await websocket.close()
                 break
 
@@ -219,7 +232,7 @@ async def echo(websocket: WebSocket, caller_phone_num:str):
                                 "event": "message",
                                 "from": "person",
                                 "result": curr_recognition,
-                                "timestamp": datetime.datetime.now().isoformat()
+                                "timestamp": datetime.datetime.now().isoformat(),
                             }
                         )
                         bot_answer = await speak_streaming_tokens(
@@ -231,8 +244,12 @@ async def echo(websocket: WebSocket, caller_phone_num:str):
                         )
 
                         await connections["client"].send_json(
-                            {"event": "message", "from": "bot", "result": bot_answer,"timestamp": datetime.datetime.now().isoformat()
-}
+                            {
+                                "event": "message",
+                                "from": "bot",
+                                "result": bot_answer,
+                                "timestamp": datetime.datetime.now().isoformat(),
+                            }
                         )
 
                         await websocket.send_json(
@@ -254,27 +271,32 @@ async def echo(websocket: WebSocket, caller_phone_num:str):
 
 
 if __name__ == "__main__":
-    #from pyngrok import ngrok
+    # from pyngrok import ngrok
     import uvicorn
     import ngrok
 
     port = 8080
     # Twilio Config
-    #bind_tls=True returns only https
+    # bind_tls=True returns only https
     # public_url = ngrok.connect(
     #     port, bind_tls=True, domain="possum-enough-informally.ngrok-free.app"
     # ).public_url
-    listener = ngrok.forward(f"http://localhost:{port}",authtoken_from_env=True, domain="possum-enough-informally.ngrok-free.app")
+    listener = ngrok.forward(
+        f"http://localhost:{port}",
+        authtoken_from_env=True,
+        domain="possum-enough-informally.ngrok-free.app",
+    )
     public_url = listener.url()
-    #print(f"Ingress established at: {public_url}")
+    # print(f"Ingress established at: {public_url}")
     number = twilio_client.incoming_phone_numbers.list()[0]
     number.update(voice_url=public_url + "/call")
 
     print(f"Waiting for calls on {number.phone_number} public url: {public_url}")
     try:
 
-        uvicorn.run("main:app", host="localhost",port=port)
+        uvicorn.run("main:app", host="localhost", port=port)
     except KeyboardInterrupt:
         import os
         import signal
+
         os.kill(os.getpid(), signal.SIGINT)
